@@ -1,3 +1,13 @@
+
+
+#limit by user
+limit_req_zone $user_id zone=limit_by_user:10m rate=1r/s;
+
+#声明一个内存，进程间共享：动态黑名单内存
+lua_shared_dict black_hole 50m;
+
+#声明一个内存，进程间共享：活动信息内存
+lua_shared_dict activity 5m;
 server {
         listen 7081;
 
@@ -6,8 +16,8 @@ server {
         #设置header中的host
         #proxy_set_header Host test.com;
 
-        error_log logs/domain-error.log error;
-        access_log logs/domain-access.log access;
+       # error_log logs/domain-error.log error;
+       # access_log logs/domain-access.log access;
         default_type text/plain;
         charset utf-8;
 
@@ -19,18 +29,22 @@ server {
         set $product_id "";
 
         #用户ID
-        set_by_lua_file $user_id /Users/wangzhangfei5/Documents/seckillproject/demo-nginx/lua/set_common_var.lua;
+        set_by_lua_file $user_id /home/lihu/git/openresty-demo/demo-nginx/lua/set_common_var.lua;
+
+        location /sayhello{
+            proxy_pass http://backend1;
+        }
 
         #活动数据查询
         location /activity/query{
             limit_req zone=limit_by_user nodelay;
-            content_by_lua_file /Users/wangzhangfei5/Documents/seckillproject/demo-nginx/lua/activity_query.lua;
+            content_by_lua_file /home/lihu/git/demo-nginx/lua/activity_query.lua;
             #设置返回的header，并将security token放在header中
             header_filter_by_lua_block{
                ngx.header["st"] = ngx.md5(ngx.var.user_id.."1")
                --这里为了解决跨域问题设置的，不存在跨域时不需要设置以下header
                ngx.header["Access-Control-Expose-Headers"] = "st"
-               ngx.header["Access-Control-Allow-Origin"] = "http://localhost:8080"
+               ngx.header["Access-Control-Allow-Origin"] = "http://localhost:8888"
                ngx.header["Access-Control-Allow-Credentials"] = "true"
             }
         }
@@ -59,7 +73,7 @@ server {
         #进结算页页面（H5）
         location /settlement/page{
             default_type text/html;
-            proxy_pass http://backend;
+            proxy_pass http://backend1;
             error_page 500 502 503 504 /html_fail.html;
         }
 
@@ -71,7 +85,7 @@ server {
                  return ngx.exit(500)
                end
             }
-            proxy_pass http://backend;
+            proxy_pass http://backend1;
             header_filter_by_lua_block{
                ngx.header["st"] = ngx.md5(ngx.var.user_id.."3")
                ngx.header["Access-Control-Expose-Headers"] = "st"
@@ -81,21 +95,21 @@ server {
 
         #结算页提交订单
         location /settlement/submitData{
-            access_by_lua_file /Users/wangzhangfei5/Documents/seckillproject/demo-nginx/lua/submit_access.lua;
-            proxy_pass http://backend;
+            access_by_lua_file /home/lihu/git/demo-nginx/lua/submit_access.lua;
+            proxy_pass http://backend1;
             error_page 500 502 503 504 @json_fail;
         }
 
         #结算页用户行为操作。模糊匹配
         location ~* /useAction/{
-            proxy_pass http://backend;
+            proxy_pass http://backend1;
         }
 
         #静态资源匹配,模糊匹配，如果静态资源上到CDN，这里就可以不用了
         location ^~ /images/{
             set_by_lua_block $user_id{
             }
-            proxy_pass http://backend;
+            proxy_pass http://backend1;
         }
 
         #模拟登录
@@ -107,6 +121,10 @@ server {
             }
         }
 
-        include /Users/wangzhangfei5/Documents/seckillproject/demo-nginx/domain/public.com;
+        include /home/lihu/git/demo-nginx/domain/public.com;
 
+}
+
+upstream backend1{
+    server 127.0.0.1:8888;
 }
